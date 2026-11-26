@@ -28,6 +28,33 @@ const DEFAULT_IGNORED_PATTERNS = [
 ];
 
 /**
+ * Compiles user-supplied ignore patterns, reporting the invalid ones instead of
+ * aborting the whole review. Patterns are regular expressions.
+ * @param {Array<string|RegExp>} patterns
+ * @returns {{ compiled: RegExp[], invalid: string[] }}
+ */
+export function compileIgnorePatterns(patterns = []) {
+  const compiled = [];
+  const invalid = [];
+
+  for (const raw of patterns || []) {
+    if (raw instanceof RegExp) {
+      compiled.push(raw);
+      continue;
+    }
+    const source = String(raw ?? '').trim();
+    if (!source) continue;
+    try {
+      compiled.push(new RegExp(source));
+    } catch {
+      invalid.push(source);
+    }
+  }
+
+  return { compiled, invalid };
+}
+
+/**
  * Checks whether a file path should be ignored during code review.
  * @param {string} filePath
  * @param {Array<RegExp|string>} extraPatterns
@@ -42,10 +69,10 @@ export function shouldIgnoreFile(filePath, extraPatterns = []) {
     }
   }
 
-  for (const extra of extraPatterns) {
-    const rx = extra instanceof RegExp ? extra : new RegExp(extra);
+  const { compiled } = compileIgnorePatterns(extraPatterns);
+  for (const rx of compiled) {
     if (rx.test(filePath)) {
-      return { ignored: true, reason: `Matches custom pattern: ${extra}` };
+      return { ignored: true, reason: `Matches custom pattern: ${rx.source}` };
     }
   }
 
@@ -58,14 +85,13 @@ export function shouldIgnoreFile(filePath, extraPatterns = []) {
  * @param {object} options
  * @param {number} [options.maxDiffLength=50000]
  * @param {Array<string>} [options.extraIgnorePatterns=[]]
- * @returns {{ includedDiff: string, totalFiles: number, reviewedFiles: string[], ignoredFiles: string[], isTruncated: boolean }}
+ * @returns {{ includedDiff: string, totalFiles: number, reviewedFiles: string[], ignoredFiles: string[], isTruncated: boolean, invalidPatterns: string[] }}
  */
 export function parseAndFilterDiff(rawDiff, options = {}) {
   const maxDiffLength = options.maxDiffLength || 50000;
-  const extraPatterns = (options.extraIgnorePatterns || [])
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((p) => new RegExp(p));
+  const { compiled: extraPatterns, invalid: invalidPatterns } = compileIgnorePatterns(
+    options.extraIgnorePatterns || []
+  );
 
   if (!rawDiff || typeof rawDiff !== 'string') {
     return {
@@ -74,6 +100,7 @@ export function parseAndFilterDiff(rawDiff, options = {}) {
       reviewedFiles: [],
       ignoredFiles: [],
       isTruncated: false,
+      invalidPatterns,
     };
   }
 
@@ -125,5 +152,39 @@ export function parseAndFilterDiff(rawDiff, options = {}) {
     reviewedFiles,
     ignoredFiles,
     isTruncated,
+    invalidPatterns,
   };
+}
+
+/**
+ * Builds the set of new-file (RIGHT side) line numbers that GitHub accepts for
+ * inline review comments, taken from the hunk headers of a unified diff.
+ * Commenting on any other line makes the whole review API call fail with 422.
+ * @param {string} diffText
+ * @returns {Map<string, Set<number>>}
+ */
+export function buildLineIndex(diffText) {
+  const index = new Map();
+  if (!diffText || typeof diffText !== 'string') return index;
+
+  for (const chunk of diffText.split(/(?=diff --git )/g)) {
+    if (!chunk.trim()) continue;
+    const headerMatch = chunk.match(/^diff --git a\/(.+?) b\/(.+?)\r?\n/);
+    if (!headerMatch) continue;
+
+    const filePath = headerMatch[2];
+    const lines = index.get(filePath) || new Set();
+
+    for (const hunk of chunk.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/gm)) {
+      const start = Number(hunk[1]);
+      const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+      for (let i = 0; i < count; i++) {
+        lines.add(start + i);
+      }
+    }
+
+    index.set(filePath, lines);
+  }
+
+  return index;
 }

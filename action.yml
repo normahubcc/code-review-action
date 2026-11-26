@@ -10,9 +10,9 @@ inputs:
     description: 'NormaHub API Key (get from https://normahub.cc)'
     required: true
   github_token:
-    description: 'GitHub Token for posting and updating review comments'
-    required: true
-    default: ${{ github.token }}
+    description: 'GitHub Token for posting and updating review comments. Optional: defaults to the workflow token (github.token) with pull-requests: write permission.'
+    required: false
+    default: ''
   model:
     description: 'Model ID to use for code review (e.g. deepseek-v4.1-flash, claude-sonnet-5-5)'
     required: false
@@ -26,11 +26,11 @@ inputs:
     required: false
     default: ''
   fail_on_critical:
-    description: 'Fail the GitHub Action step if any CRITICAL security/logic vulnerabilities are found'
+    description: 'Fail the GitHub Action step if any CRITICAL security/logic vulnerabilities are found (true/false)'
     required: false
     default: 'false'
   inline_comments:
-    description: 'Post native in-line review suggestions directly to PR code lines (GitHub Reviews API)'
+    description: 'Post native in-line review suggestions directly to PR code lines (GitHub Reviews API, true/false)'
     required: false
     default: 'true'
 
@@ -41,7 +41,9 @@ runs:
       shell: bash
       env:
         NORMAHUB_API_KEY: ${{ inputs.normahub_api_key }}
-        GITHUB_TOKEN: ${{ inputs.github_token }}
+        # Metadata input defaults cannot contain expressions, so the workflow
+        # token fallback has to live here. An explicitly passed token wins.
+        GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
         INPUT_MODEL: ${{ inputs.model }}
         INPUT_MAX_DIFF_LENGTH: ${{ inputs.max_diff_length }}
         INPUT_IGNORE_PATTERNS: ${{ inputs.ignore_patterns }}
@@ -53,4 +55,3 @@ runs:
         INPUT_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
         node "${{ github.action_path }}/src/index.js"
-

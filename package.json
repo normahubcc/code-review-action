@@ -1,6 +1,6 @@
 {
   "name": "@normahub/code-review-action",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Automated GitHub Action for Pull Request code reviews powered by NormaHub AI models",
   "type": "module",
   "main": "src/index.js",

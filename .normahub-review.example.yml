@@ -1,5 +1,7 @@
 # NormaHub AI Code Review Configuration
 # Place this file as .normahub-review.yml or .github/normahub-review.yml in your repository root.
+# Patterns are regular expressions (not globs): use ^dist/ instead of dist/**.
+# Inline `# comments` are ignored.
 
 language: ru # 'ru' for Russian or 'en' for English review commentary
 model: deepseek-v4.1-flash # Model to run review: deepseek-v4.1-flash, claude-sonnet-5-5, etc.
@@ -14,7 +16,7 @@ custom_rules:
 
 # File patterns to exclude from review in addition to default noise filters
 ignore_patterns:
-  - "dist/**"
-  - "build/**"
-  - "*.generated.*"
-  - "migrations/**"
+  - "^dist/"
+  - "^build/"
+  - "\\.generated\\."
+  - "^migrations/"
